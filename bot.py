@@ -100,8 +100,25 @@ def _save_json(path: Path, data):
 
 USER_DEFAULTS = _load_json(DEFAULTS_FILE)   # {str(chat_id): lang_code}
 
-_kks = pykakasi.kakasi()
-_janome = JanomeTokenizer()
+# pykakasi and janome each load a sizeable dictionary into memory (100-150MB combined).
+# Loading them lazily, only on first actual use, keeps idle/startup memory low --
+# important on memory-constrained hosts like Render's free tier (512MB cap).
+_kks = None
+_janome = None
+
+
+def _get_kks():
+    global _kks
+    if _kks is None:
+        _kks = pykakasi.kakasi()
+    return _kks
+
+
+def _get_janome():
+    global _janome
+    if _janome is None:
+        _janome = JanomeTokenizer()
+    return _janome
 
 # は/へ change pronunciation when used as grammatical particles (topic marker / direction
 # marker), and a few common greetings keep the old "wa" pronunciation as a fixed idiom
@@ -127,7 +144,7 @@ CJK_PUNCT_MAP = {
 def romanize_japanese(text: str) -> str:
     """Convert Japanese text to Hepburn romaji, correctly handling は/へ as particles."""
     parts = []
-    for token in _janome.tokenize(text):
+    for token in _get_janome().tokenize(text):
         surface = token.surface
         pos = token.part_of_speech
         if surface in JA_WA_EXCEPTIONS:
@@ -143,7 +160,7 @@ def romanize_japanese(text: str) -> str:
                 parts.append(CJK_PUNCT_MAP[surface])
             continue
         else:
-            romaji = "".join(item["hepburn"] for item in _kks.convert(surface))
+            romaji = "".join(item["hepburn"] for item in _get_kks().convert(surface))
         parts.append(romaji)
     return " ".join(parts)
 
